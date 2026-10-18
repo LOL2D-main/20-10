@@ -426,74 +426,102 @@ const text1 = document.getElementById('text-1');
 
 // Append helper: persistent music toggle and quick text update per user request
 (function(){
-  // Create a small floating music toggle button if not present in HTML
-  function ensureButton(){
-    let btn = document.getElementById('music-toggle-btn');
-    if (btn) return btn;
-    btn = document.createElement('button');
-    btn.id = 'music-toggle-btn';
-    btn.type = 'button';
-    btn.setAttribute('aria-pressed','false');
-    btn.textContent = 'Bật nhạc';
-    // basic positioning so it appears and is usable without CSS changes
-    btn.style.position = 'fixed';
-    btn.style.left = '12px';
-    btn.style.bottom = '12px';
-    btn.style.zIndex = '9999';
-    btn.style.padding = '8px 12px';
-    btn.style.borderRadius = '8px';
-    btn.style.border = 'none';
-    btn.style.background = 'rgba(0,0,0,0.6)';
-    btn.style.color = '#fff';
-    btn.style.fontSize = '14px';
-    btn.style.cursor = 'pointer';
-    document.body.appendChild(btn);
-    return btn;
+  function initOnce(){
+    // Create a small floating music toggle button if not present in HTML
+    function ensureButton(){
+      let btn = document.getElementById('music-toggle-btn');
+      if (btn) return btn;
+      btn = document.createElement('button');
+      btn.id = 'music-toggle-btn';
+      btn.type = 'button';
+      btn.setAttribute('aria-pressed','false');
+      btn.textContent = 'Bật nhạc';
+      // basic positioning so it appears and is usable without CSS changes
+      btn.style.position = 'fixed';
+      btn.style.left = '12px';
+      btn.style.bottom = '12px';
+      btn.style.zIndex = '9999';
+      btn.style.padding = '8px 12px';
+      btn.style.borderRadius = '8px';
+      btn.style.border = 'none';
+      btn.style.background = 'rgba(0,0,0,0.6)';
+      btn.style.color = '#fff';
+      btn.style.fontSize = '14px';
+      btn.style.cursor = 'pointer';
+      // visible focus outline
+      btn.style.outline = '2px solid rgba(255,255,255,0.06)';
+      document.body.appendChild(btn);
+      console.log('[tiny] music toggle button created');
+      return btn;
+    }
+
+    const btn = ensureButton();
+    function updateBtn(playing){
+      if(!btn) return;
+      btn.textContent = playing ? 'Tắt nhạc' : 'Bật nhạc';
+      btn.setAttribute('aria-pressed', playing ? 'true':'false');
+      btn.style.opacity = '1';
+    }
+
+    // restore user preference: if user previously forced music on, allow past gate
+    try{
+      const pref = localStorage.getItem('bgmUserToggle');
+      if(pref === '1'){
+        musicAllowedPastGate = true;
+        try{ if(tinySoundtrack && tinySoundtrack.readyState >= 1) tinySoundtrack.currentTime = Math.max(MUSIC_HOLD_TIME, tinySoundtrack.currentTime || 0); }catch(_){ }
+        if(tinySoundtrack) tinySoundtrack.play().then(()=>updateBtn(true)).catch(()=>updateBtn(!tinySoundtrack.paused));
+      } else {
+        updateBtn(tinySoundtrack ? !tinySoundtrack.paused : false);
+      }
+    } catch(e){ updateBtn(tinySoundtrack ? !tinySoundtrack.paused : false); }
+
+    // Add diagnostic click handler to help debug non-responsive clicks
+    btn.addEventListener('click', function(e){
+      e.preventDefault();
+      console.log('[tiny] music-toggle clicked');
+      console.log('[tiny] tinySoundtrack exists?', !!tinySoundtrack);
+      try{
+        if (tinySoundtrack) {
+          console.log('[tiny] paused=', tinySoundtrack.paused, 'currentTime=', tinySoundtrack.currentTime, 'readyState=', tinySoundtrack.readyState);
+        }
+      } catch(err){ console.warn('[tiny] reading soundtrack state failed', err); }
+
+      if (!tinySoundtrack) {
+        alert('Không tìm thấy phần tử âm thanh trên trang.');
+        return;
+      }
+
+      if (tinySoundtrack.paused) {
+        musicAllowedPastGate = true;
+        localStorage.setItem('bgmUserToggle','1');
+        tinySoundtrack.play().then(()=>{
+          updateBtn(true);
+          console.log('[tiny] play() succeeded');
+        }).catch((err)=>{
+          console.warn('[tiny] play() failed', err);
+          updateBtn(!tinySoundtrack.paused);
+          alert('Trình duyệt có thể chặn tự động phát âm thanh. Hãy thử nhấn lại hoặc kiểm tra cài đặt autoplay của trình duyệt.');
+        });
+      } else {
+        tinySoundtrack.pause();
+        musicAllowedPastGate = false;
+        localStorage.setItem('bgmUserToggle','0');
+        updateBtn(false);
+        console.log('[tiny] paused by user');
+      }
+    });
+
+    // Also add a small visual active state on pointerdown for immediate feedback
+    btn.addEventListener('pointerdown', () => { btn.style.transform = 'scale(0.98)'; });
+    btn.addEventListener('pointerup', () => { btn.style.transform = ''; });
+
+    // Quick text replacement requested by user: change opening text if present
+    try{
+      const el = document.getElementById('text-1');
+      if(el) el.textContent = 'Cậu tớ. Tớ là 10A8. Được nhận lệnh từ Mẹ Hằng xinh gái, ...';
+    }catch(e){ console.warn('[tiny] set text-1 failed', e); }
   }
 
-  const btn = ensureButton();
-  function updateBtn(playing){
-    if(!btn) return;
-    btn.textContent = playing ? 'Tắt nhạc' : 'Bật nhạc';
-    btn.setAttribute('aria-pressed', playing ? 'true':'false');
-  }
-
-  // restore user preference: if user previously forced music on, allow past gate
-  try{
-    const pref = localStorage.getItem('bgmUserToggle');
-    if(pref === '1'){
-      musicAllowedPastGate = true;
-      // attempt to resume from hold time so UX is continuous
-      try{ if(tinySoundtrack.readyState >= 1) tinySoundtrack.currentTime = Math.max(MUSIC_HOLD_TIME, tinySoundtrack.currentTime || 0); }catch(_){ }
-      tinySoundtrack.play().then(()=>updateBtn(true)).catch(()=>updateBtn(!tinySoundtrack.paused));
-    } else {
-      updateBtn(!tinySoundtrack.paused);
-    }
-  } catch(e){ updateBtn(!tinySoundtrack.paused); }
-
-  btn.addEventListener('click', function(e){
-    e.preventDefault();
-    if (tinySoundtrack.paused) {
-      musicAllowedPastGate = true;
-      localStorage.setItem('bgmUserToggle','1');
-      tinySoundtrack.play().then(()=>{
-        updateBtn(true);
-      }).catch(()=>{
-        // if autoplay blocked, leave label and let user click again
-        updateBtn(!tinySoundtrack.paused);
-        alert('Trình duyệt có thể chặn tự động phát âm thanh. Hãy nhấn lại để bật nhạc.');
-      });
-    } else {
-      tinySoundtrack.pause();
-      musicAllowedPastGate = false;
-      localStorage.setItem('bgmUserToggle','0');
-      updateBtn(false);
-    }
-  });
-
-  // Quick text replacement requested by user: change opening text if present
-  try{
-    const el = document.getElementById('text-1');
-    if(el) el.textContent = 'Cậu tớ. Tớ là 10A8. Được nhận lệnh từ Mẹ Hằng xinh gái, ...';
-  }catch(e){}
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initOnce, {once:true});
+  else initOnce();
 })();
